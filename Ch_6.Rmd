@@ -1,0 +1,244 @@
+---
+title: "Chapter 6"
+author: "kmm"
+date: "February 24, 2016"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE)
+library(rethinking)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(cowplot)
+
+source("~/Dropbox/Classes/Topics_Biostats/theme_cowplot.R")
+ggplot2::theme_set(theme_cowplot())
+```
+
+## Hominin brains
+
+```{r}
+Species <- c("afarensis", "africanus", "habilis", "boisei",
+             "rudolfensis", "ergaster", "sapiens")
+Brain_Vol <- c(438, 452, 612, 521, 752, 871, 1350)
+Mass <- c(37, 35.5, 34.5, 41.5, 55.5, 61, 53.3)
+d <- data.frame(Species, Brain_Vol, Mass)
+```
+
+Deviance
+
+```{r}
+d$Mass_s <- (d$Mass - mean(d$Mass)) / sd(d$Mass)
+m6.8 <- map(
+  alist(
+    Brain_Vol ~ dnorm(mu, sigma),
+    mu <- a + b * Mass_s
+  ), data = d,
+  start = list(a = mean(d$Brain_Vol), b = 0, sigma = sd(d$Brain_Vol)),
+  method = "Nelder-Mead"
+)
+theta <- coef(m6.8)
+dev <- -2 * sum(dnorm(
+  d$Brain_Vol,
+  mean = theta[1] + theta[2] * d$Mass_s,
+  sd = theta[3],
+  log = TRUE
+))
+dev
+-2 * logLik(m6.8)
+```
+
+Simulation and training
+
+```{r sim_deviance, eval=FALSE}
+# NOTE: Very slow; Run with caution
+sim_train_test <- function(n) {
+  kseq <- 1:5
+  dev <- sapply(kseq, function(k){
+    print(k)
+    r <- mcreplicate(1e4, sim.train.test(N = n, k = k), mc.cores = 6)
+    c(mean(r[1, ]), mean(r[2, ]), sd(r[1, ]), sd(r[2, ]))
+  })
+  save(dev, file = paste0("dev_", n, ".Rda"))
+}
+
+sim_train_test(10000)
+```
+
+```{r}
+load("dev_20.Rda")
+dev20 <- dev
+load("dev_100.Rda")
+dev100 <- dev
+```
+
+Reformat `dev` for plotting
+
+```{r process_sim_train_data}
+reformat_dev <- function(dev){
+  means <- dev[1:2, ]
+  means <- melt(means)
+  names(means) <- c("In_out", "Params", "Deviance")
+  means$In_out <- factor(means$In_out, labels = c("In", "Out"))
+  means$Params <- factor(means$Params)
+  
+  bars <- dev[3:4, ]
+  bars <- melt(bars)
+  names(bars) <- c("In_out", "Params", "sd")
+  bars$In_out <- factor(bars$In_out, labels = c("In", "Out"))
+  bars$Params <- factor(bars$Params)
+  bars$Lower <- means$Deviance - bars$sd
+  bars$Upper <- means$Deviance + bars$sd
+  return(list(means = means, bars = bars))
+}
+
+plot_sim_dev <- function(dev, title = ""){
+  p <- ggplot() +
+    geom_linerange(data = dev[["bars"]],
+                   aes(x = Params, ymin = Lower, ymax = Upper,
+                       color = In_out),
+                   position = position_dodge(width = 0.25)) +
+    geom_point(data = dev[["means"]],
+               aes(x = Params, y = Deviance, color = In_out),
+               position = position_dodge(width = 0.25),
+               size = 2) +
+    scale_color_manual(values = c("darkred", "darkblue"),
+                       labels = c("In sample", "Out of sample"),
+                       name = "Sample") +
+    labs(x = "Number of Parameters") +
+    ggtitle(title)
+  return(p)
+}
+```
+
+```{r}
+dev20_plot <- reformat_dev(dev20)
+dev100_plot <- reformat_dev(dev100)
+dev1000_plot <- reformat_dev(dev1000)
+```
+
+```{r}
+plot_sim_dev(dev20_plot, "n = 20")
+plot_sim_dev(dev100_plot, "n = 100")
+plot_sim_dev(dev1000_plot, "n = 1000")
+```
+
+## Model comparison 6.5.1
+
+```{r}
+data(milk)
+d <- milk %>% filter(complete.cases(.)) %>% as.data.frame()
+d$neocortex <- d$neocortex.perc / 100
+dim(d)
+```
+
+```{r}
+a.start <- mean(d$kcal.per.g)
+sigma.start <- log(sd(d$kcal.per.g))
+m6.11 <- map(
+  alist(
+    kcal.per.g ~ dnorm(a, exp(log.sigma))),
+  data = d,
+  start = list(a = a.start, log.sigma = sigma.start)
+)
+m6.12 <- map(
+  alist(
+    kcal.per.g ~ dnorm(mu, exp(log.sigma)),
+    mu <- a + bn * neocortex),
+  data = d,
+  start = list(a = a.start, bn = 0, log.sigma = sigma.start)
+)
+m6.13 <- map(
+  alist(
+    kcal.per.g ~ dnorm(mu, exp(log.sigma)),
+    mu <- a + bm * log(mass)),
+  data = d,
+  start = list(a = a.start, bm = 0, log.sigma = sigma.start)
+)
+m6.14 <- map(
+  alist(
+    kcal.per.g ~ dnorm(mu, exp(log.sigma)),
+    mu <- a + bn * neocortex + bm * log(mass)),
+  data = d,
+  start = list(a = a.start, bn = 0, bm = 0, log.sigma = sigma.start)
+)
+```
+
+```{r}
+(milk_models <- rethinking::compare(m6.11, m6.12, m6.13, m6.14))
+```
+
+WAIC comparison plot:
+
+- Filled: in sample deviance
+- Open: WAIC + SE
+- Triangle: Difference between the model and the top model + SE
+
+```{r}
+plot(milk_models, SE = TRUE, dSE = TRUE)
+```
+
+```{r}
+coeftab(m6.11, m6.12, m6.13, m6.14)
+plot(coeftab(m6.11, m6.12, m6.13, m6.14))
+```
+
+Counterfactual predictions for constant mean
+
+```{r}
+# neocortex from 0.5 to 0.8
+nc.seq <- seq(0.5, 0.8, length.out = 30)
+d.predict <- list(
+  kcal.per.g = rep(0, 30),
+  neocortex = nc.seq,
+  mass = rep(4.5, 30) # Mean mass
+)
+pred.m6.14 <- link(m6.14, data = d.predict)
+mu <- apply(pred.m6.14, 2, mean)
+mu.PI <- apply(pred.m6.14, 2, PI)
+
+M_pred <- data.frame(neocortex = nc.seq,
+                     mu = mu,
+                     lower_PI = mu.PI[1, ],
+                     upper_PI = mu.PI[2, ])
+```
+
+Ensemble predictions
+
+```{r}
+milk_ensemble <- ensemble(m6.11, m6.12, m6.13, m6.14, data = d.predict)
+mu.ens <- apply(milk_ensemble$link, 2, mean)
+mu.ens.PI <- apply(milk_ensemble$link, 2, PI)
+M_ens <- data.frame(neocortex = nc.seq,
+                    mu = mu.ens,
+                    lower_PI = mu.ens.PI[1, ],
+                    upper_PI = mu.ens.PI[2, ])
+```
+
+Dotted lines are model m6.14. Shaded area is ensemble PI.
+
+```{r}
+ggplot() +
+  geom_ribbon(data = M_ens, aes(x = neocortex,
+                                ymin = lower_PI,
+                                ymax = upper_PI),
+              fill = "gray50", alpha = 0.5) +
+  geom_point(data = d, aes(neocortex, kcal.per.g)) +
+  geom_line(data = M_pred, aes(x = neocortex,
+                               y = lower_PI),
+            linetype = "dotted") +
+  geom_line(data = M_pred, aes(x = neocortex,
+                               y = upper_PI),
+            linetype = "dotted") +
+  geom_line(data = M_pred, aes(x = neocortex, y = mu),
+            linetype = "dotted")
+```
+

@@ -1,0 +1,48 @@
+---
+title: "Chapter 8"
+author: "kmm"
+date: "February 24, 2016"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Metropolis
+
+```{r}
+set.seed(10)
+num_weeks <- 1e5
+positions <- rep(0, num_weeks)
+current <- 10
+for (i in 1:num_weeks) {
+  # record current position
+  positions[i] <- current
+  
+  # flip coin to generate proposal
+  proposal <- current + sample(c(-1, 1), size = 1)
+  
+  # loop around
+  if (proposal < 1) proposal <- 10
+  if (proposal > 10) proposal <- 1
+  
+  # move?
+  prob_move <- proposal / current
+  current <- ifelse(runif(1) < prob_move, proposal, current)
+}
+ggplot(data.frame(positions = positions[1:200],
+                  week = 1:200), aes(week, positions)) +
+  geom_line()
+ggplot(data.frame(positions), aes(positions)) +
+  geom_bar()
+```
+
+## MCMC
+

@@ -1,0 +1,453 @@
+---
+title: "Chapter 5"
+author: "kmm"
+date: "February 24, 2016"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE)
+library(rethinking)
+library(ggplot2)
+library(GGally)
+library(cowplot)
+library(ggrepel)
+library(dplyr)
+library(rstanarm)
+
+set.seed(10)
+```
+
+## Waffle House
+
+```{r}
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+d$MedianAgeMarriage_s <- as.numeric(scale(d$MedianAgeMarriage))
+```
+
+## Divorce ~ MedianAgeMarriage 
+
+```{r}
+m5.1 <- map2stan(
+  alist(
+    Divorce ~ dnorm(mu, sigma),
+    mu <- a + bA * MedianAgeMarriage_s,
+    a ~ dnorm(10, 10),
+    bA ~ dnorm(0, 1),
+    sigma ~ dcauchy(0, 2)
+  ), data = d
+)
+precis(m5.1)
+
+MAM_seq <- seq(-4, 4, length.out = 30)
+mu <- link(m5.1, data = data.frame(MedianAgeMarriage_s = MAM_seq))
+mu_PI <- apply(mu, 2, PI)
+
+pred_dat <- data.frame(MAM_seq = MAM_seq,
+                       PI_upper = mu_PI[2, ],
+                       PI_lower = mu_PI[1, ])
+
+ggplot() +
+  geom_abline(intercept = coef(m5.1)["a"],
+              slope = coef(m5.1)["bA"]) +
+  geom_point(data = d, aes(x = MedianAgeMarriage_s, y = Divorce),
+             color = "blue") +
+  geom_ribbon(data = pred_dat, aes(x = MAM_seq,
+                                   ymax = PI_upper,
+                                   ymin = PI_lower),
+              fill = "gray50", alpha = 0.2)
+```
+
+Try separate for each state
+
+```{r}
+d$Loc_ID <- coerce_index(d$Loc)
+
+m5.1_ID <- map2stan(
+  alist(
+    Divorce ~ dnorm(mu, sigma),
+    mu <-
+      a +
+      bA * MedianAgeMarriage_s +
+      v_Intercept[Loc_ID],
+    a ~ dnorm(10, 10),
+    bA ~ dnorm(0, 1),
+    v_Intercept[Loc_ID] ~ dnorm(0, sigma_Loc_ID),
+    sigma_Loc_ID ~ dcauchy(0, 2),
+    sigma ~ dcauchy(0, 2)
+  ), data = d, iter = 100000,
+  control = list(adapt_delta = 0.95)
+)
+
+precis(m5.1_ID, digits = 5)
+precis(m5.1, digits = 5)
+
+rethinking::compare(m5.1, m5.1_ID)
+
+m5.1_arm <- stan_glm(Divorce ~ MedianAgeMarriage_s, data = d)
+m5.1_ID_arm <- stan_lmer(Divorce ~ MedianAgeMarriage_s + (1 | Loc_ID),
+                         data = d, adapt_delta = 0.99)
+loo1 <- loo(m5.1_arm)
+loo2 <- loo(m5.1_ID_arm)
+rstanarm::compare(loo1, loo2)
+
+kf1 <- kfold(m5.1_arm, K = 10)
+kf2 <- kfold(m5.1_ID_arm, K = 10)
+rstanarm::compare(kf2, kf1)
+
+```
+
+## Divorce ~ MedianAgeMarriage + Marriage
+
+```{r}
+d$Marriage_s <- as.numeric(scale(d$Marriage))
+m5.3 <- map(
+  alist(
+    Divorce ~ dnorm(mu, sigma),
+    mu <- intercept + bR * Marriage_s + bA * MedianAgeMarriage_s,
+    intercept ~ dnorm(10, 10),
+    bR ~ dnorm(0, 1),
+    bA ~ dnorm(0, 1),
+    sigma ~ dunif(0, 10)
+  ), data = d
+)
+precis(m5.3)
+plot(precis(m5.3))
+```
+
+### Predictor residual plots
+
+Residuals of the predictors regressed against one another. Here residuals for marriage predicted by median age.
+
+```{r}
+m5.4 <- map(
+  alist(
+    Marriage_s ~ dnorm(mu, sigma),
+    mu <- intercept + bA * MedianAgeMarriage_s,
+    intercept ~ dnorm(0, 10),
+    bA ~ dnorm(0, 1),
+    sigma ~ dunif(0, 10)
+  ), data = d
+)
+mu <- coef(m5.4)["intercept"] + coef(m5.4)["bA"] * d$MedianAgeMarriage_s
+m_resid <- d$Marriage_s - mu
+plot(m_resid, d$Divorce)
+```
+
+### Counterfactual plots
+
+Implied predictions of the model. Ask for the predictions for all observed or unobserved data.
+
+```{r}
+# Prepare counterfactual data. Change in Marriage_s on predictions
+A_avg <- mean(d$MedianAgeMarriage_s)
+R_seq <- seq(-3, 3, length.out = 30)
+pred_data <- data.frame(Marriage_s = R_seq,
+                        MedianAgeMarriage_s = A_avg)
+# Compute counterfactual mean divorce (mu)
+mu <- link(m5.3, data = pred_data, n = 1e4)
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+# Simulate counterfactual divorce outcomes
+R_sim <- sim(m5.3, data = pred_data, n = 1e4)
+R_PI <- apply(R_sim, 2, PI)
+# Display
+plot(Divorce ~ Marriage_s, data = d, type = "n")
+mtext("MedianAgeMarriage_s = 0")
+lines(R_seq, mu_mean)
+shade(mu_PI, R_seq)
+shade(R_PI, R_seq)
+
+# Change in MedianAgeMarriage_s on predictions
+R_avg <- mean(d$Marriage_s)
+A_seq <- seq(-3, 3.5, length.out = 30)
+pred_data2 <- data.frame(Marriage_s = R_avg,
+                         MedianAgeMarriage_s = A_seq)
+# Compute counterfactual mean divorce (mu)
+mu <- link(m5.3, data = pred_data2, n = 1e4)
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+# Simulate counterfactual divorce outcomes
+A_sim <- sim(m5.3, data = pred_data2, n = 1e4)
+A_PI <- apply(A_sim, 2, PI)
+# Display
+plot(Divorce ~ MedianAgeMarriage_s, data = d, type = "n")
+mtext("Marriage_s = 0")
+lines(A_seq, mu_mean)
+shade(mu_PI, A_seq)
+shade(A_PI, A_seq)
+```
+
+### Posterior prediction plots
+
+```{r post_pred}
+# Call link without new data, so it uses the original data
+mu <- link(m5.3)
+
+# Summarize samples across cases
+mu_mean <- apply(mu, 2, mean) # Mean value for the sample at each obs
+mu_PI <- apply(mu, 2, PI)     # PI for each obs
+
+# Simulate observations
+divorce_sim <- sim(m5.3, n = 1e4)
+divorce_PI <- apply(divorce_sim, 2, PI)
+```
+
+```{r}
+# Plot predicted against observed
+plot(mu_mean ~ d$Divorce, col = rangi2, ylim = range(mu_PI),
+     xlab = "Observed Divorce", ylab = "Predicted Divorce")
+abline(a = 0, b = 1, lty = 2)
+for (i in 1:nrow(d)) {
+  lines(rep(d$Divorce[i], 2), c(mu_PI[1, i], mu_PI[2, i]),
+        col = rangi2)
+}
+
+d_pred <- data.frame(State = as.character(d$Loc),
+                     Divorce = d$Divorce,
+                     Predicted = mu_mean,
+                     Lower = mu_PI[1, ],
+                     Upper = mu_PI[2, ])
+ggplot(d_pred, aes(x = Divorce, y = Predicted, label = State)) +
+  geom_abline(slope = 1, intercept = 0) +
+  geom_point() +
+  geom_text_repel(size = 3) +
+  geom_linerange(aes(ymin = Lower, ymax = Upper))
+
+d_pred$resid <- d$Divorce - mu_mean
+d_pred$Order <- 1:nrow(d_pred)
+d_pred <- d_pred %>% arrange(resid)
+
+# Residual plot
+divorce_resid <- d$Divorce - mu_mean
+o <- order(divorce_resid)
+dotchart(divorce_resid[o], labels = d$Loc[o],
+         xlim = c(-6, 5), cex = 0.6)
+abline(v = 0, col = alpha("black", 0.2))
+for (i in 1:nrow(d)) {
+  j <- o[i]
+  lines(d$Divorce[j] -  c(mu_PI[1, j], mu_PI[2, j]), rep(i, 2))
+  points(d$Divorce[j] - c(divorce_PI[1, j], divorce_PI[2, j]),
+         rep(i, 2), pch = 3, cex = 0.6, col = "gray")
+}
+```
+
+## 5.2 Masked relationship
+
+Milk energy vs. Neocortex
+
+```{r}
+data(milk)
+d <- milk
+str(d)
+d <- d %>% select(kcal.per.g, neocortex.perc, mass) %>%
+  filter(complete.cases(.))
+```
+
+```{r map_milk}
+m5.5 <- map(
+  alist(
+    kcal.per.g ~ dnorm(mu, sigma),
+    mu <- a + bn * neocortex.perc,
+    a ~ dnorm(0, 100),
+    bn ~ dnorm(0, 1),
+    sigma ~ dunif(0, 1)
+  ), data = d
+)
+precis(m5.5, digits = 3)
+
+np_seq <- 0:100
+pred_data <- data.frame(neocortex.perc = np_seq)
+mu <- link(m5.5, data = pred_data, n = 1e4)
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+```
+
+```{r}
+plot(kcal.per.g ~ neocortex.perc, data = d, col = rangi2)
+lines(np_seq, mu_mean)
+lines(np_seq, mu_PI[1, ], lty = 2)
+lines(np_seq, mu_PI[2, ], lty = 2)
+
+d_pred <- data.frame(neocortex.perc = np_seq,
+                     mu_mean = mu_mean,
+                     Lower = mu_PI[1, ],
+                     Upper = mu_PI[2, ])
+ggplot() +
+  geom_point(data = d, aes(neocortex.perc, kcal.per.g),
+             color = "darkblue") +
+  geom_line(data = d_pred, aes(neocortex.perc, mu_mean)) +
+  geom_ribbon(data = d_pred, aes(x = neocortex.perc,
+                                    ymin = Lower,
+                                    ymax = Upper),
+              fill = "gray50",
+              alpha = 0.2) +
+  labs(x = "Percent Neocortex", y = "Energy Usage (kcal/g")
+```
+
+Milk energy vs. Mass
+
+```{r}
+d$logMass <- log(d$mass)
+m5.6 <- map(
+  alist(
+    kcal.per.g ~ dnorm(mu, sigma),
+    mu <- a + bn * logMass,
+    a ~ dnorm(0, 100),
+    bn ~ dnorm(0, 1),
+    sigma ~ dunif(0, 1)
+  ), data = d
+)
+precis(m5.6)
+```
+
+Milk energy vs. Neocortex + Mass
+
+```{r}
+m5.7 <- map(
+  alist(
+    kcal.per.g ~ dnorm(mu, sigma),
+    mu <- a + bn * neocortex.perc + bm * logMass,
+    a ~ dnorm(0, 100),
+    bn ~ dnorm(0, 1),
+    bm ~ dnorm(0, 1),
+    sigma ~ dunif(0, 1)
+  ), data = d
+)
+precis(m5.7)
+```
+
+Counterfactual plots
+
+```{r}
+mean_logMass <- mean(log(d$mass))
+np_seq <- 0:100
+pred_data <- data.frame(
+  neocortex.perc = np_seq,
+  logMass = mean_logMass
+)
+mu <- link(m5.7, data = pred_data, n = 1e4)
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+
+plot(kcal.per.g ~ neocortex.perc, data = d, type = "n")
+lines(np_seq, mu_mean)
+lines(np_seq, mu_PI[1, ], lty = 2)
+lines(np_seq, mu_PI[2, ], lty = 2)
+```
+
+```{r}
+mean_neo <- mean(d$neocortex.perc)
+np_seq <- seq(-2.5, 4.5, length = 200)
+pred_data <- data.frame(
+  logMass = np_seq,
+  neocortex.perc = mean_neo
+)
+mu <- link(m5.7, data = pred_data, n = 1e4)
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+
+plot(kcal.per.g ~ logMass, data = d, type = "n")
+lines(np_seq, mu_mean)
+lines(np_seq, mu_PI[1, ], lty = 2)
+lines(np_seq, mu_PI[2, ], lty = 2)
+```
+
+## Simulate masking
+
+```{r}
+set.seed(5)
+N <- 100                         # number of cases
+rho <- 0.7                       # correlation btw x_pos and x_neg
+x_pos <- rnorm(N)                # x_pos as Gaussian
+x_neg <- rnorm(N, rho * x_pos,   # x_neg correlated with x_pos
+    sqrt(1 - rho ^ 2))
+y <- rnorm(N, x_pos - x_neg)     # y equally associated with x_pos, x_neg
+d <- data.frame(y, x_pos, x_neg) # bind all together in data frame
+pairs(d)
+
+ggscatmat(d)
+```
+
+## Simulate multicollinearity
+
+```{r}
+set.seed(100)
+n <- 100
+height <- rnorm(n, 10, 2)
+leg_prop <- runif(n, 0.4, 0.5)
+left_leg <- leg_prop * height + rnorm(n, 0, 0.02)
+right_leg <- leg_prop * height + rnorm(n, 0, 0.02)
+d <- data.frame(height, left_leg, right_leg)
+```
+
+```{r}
+m5.8 <- map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- a + bl * left_leg + br * right_leg,
+    a ~ dnorm(10, 100),
+    bl ~ dnorm(2, 10),
+    br ~ dnorm(2, 10),
+    sigma ~ dunif(0, 10)
+  ), data = d
+)
+precis(m5.8)
+plot(precis(m5.8))
+post <- extract.samples(m5.8)
+dens(post)
+ggplot(post, aes(bl, br)) + geom_point(alpha = 0.2)
+dens(post$bl + post$br)
+```
+
+```{r leg_stan}
+m5.8_s <- map2stan(m5.8)
+plot(m5.8_s)
+pairs(m5.8_s)
+plot(precis(m5.8_s))
+precis(m5.8_s)
+```
+
+## Milk multicollinearity
+
+```{r}
+data(milk)
+d <- milk[, c(3, 4, 6)]
+names(d) <- c("Energy", "Fat", "Lactose")
+d <- d[complete.cases(d), ]
+```
+
+```{r}
+m5.10 <- map(
+  alist(
+    Energy ~ dnorm(mu, sigma),
+    mu <- a + bF * Fat,
+    a ~ dnorm(0.6, 10),
+    bF ~ dnorm(0, 1),
+    sigma ~ dunif(0, 10)
+  ), data = d
+)
+
+m5.11 <- map(
+  alist(
+    Energy ~ dnorm(mu, sigma),
+    mu <- a + bL * Lactose,
+    a ~ dnorm(0.6, 10),
+    bL ~ dnorm(0, 1),
+    sigma ~ dunif(0, 10)
+  ), data = d
+)
+coeftab(m5.10, m5.11, digits = 3)
+rethinking::compare(m5.10, m5.11)
+ggscatmat(d)
+```
+
+Start at 5.3.3

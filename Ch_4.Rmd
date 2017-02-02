@@ -1,0 +1,318 @@
+---
+title: "Chapter 4"
+author: "kmm"
+date: "February 24, 2016"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE)
+library(rethinking)
+library(ggplot2)
+library(cowplot)
+
+set.seed(10)
+```
+
+## Howell
+
+```{r}
+prod(1 + runif(12, 0, 0.1))
+
+growth <- replicate(10000, prod(1 + runif(12, 0, 0.1)))
+dens(growth, norm.comp = TRUE)
+
+big <- replicate(10000, prod(1 + runif(12, 0, 0.5)))
+small <- replicate(10000, prod(1 + runif(12, 0, 0.01)))
+dens(big, norm.comp = TRUE)
+dens(small, norm.comp = TRUE)
+
+log.big <- replicate(10000, log(prod(1 + runif(12, 0, 0.5))))
+dens(log.big, norm.comp = TRUE)
+
+w <- 6
+n <- 9
+p_grid <- seq(0, 1, length.out = 100)
+posterior <- dbinom(w, n, p_grid) * dunif(p_grid, 0, 1)
+posterior <- posterior / sum(posterior)
+
+data("Howell1")
+d <- Howell1
+d2 <- d[d$age >= 18, ]
+dens(d2$height)
+
+curve(dnorm(x, 178, 20), from = 100, to = 250)
+curve(dunif(x, 0, 50), from = -10, to = 60)
+
+sample_mu <- rnorm(1e4, 178, 20)
+sample_sigma <- runif(1e4, 0, 50)
+prior_h <- rnorm(1e4, sample_mu, sample_sigma)
+dens(prior_h)
+
+# Grid approximation
+mu.list <- seq(140, 160, length.out = 1000)
+sigma.list <- seq(4, 9, length.out = 1000)
+post <- expand.grid(mu = mu.list, sigma = sigma.list)
+post$LL <- sapply(1:nrow(post), 
+                  function(i) sum(dnorm(d2$height,
+                                        mean = post$mu[i],
+                                        sd = post$sigma[i],
+                                        log = TRUE)))
+post$prod <- post$LL + dnorm(post$mu, 178, 20, TRUE) +
+  dunif(post$sigma, 0, 50, TRUE)
+post$prob <- exp(post$prod - max(post$prod))
+
+contour_xyz(post$mu, post$sigma, post$prob)
+image_xyz(post$mu, post$sigma, post$prob)
+
+# Sampling the posterior
+sample.rows <- sample(1:nrow(post), size = 1e4, replace = TRUE,
+                      prob = post$prob)
+sample.mu <- post$mu[sample.rows]
+sample.sigma <- post$sigma[sample.rows]
+plot(sample.mu, sample.sigma, cex = 0.5, pch = 16, col = col.alpha(rangi2, 0.1))
+
+dens(sample.mu)
+dens(sample.sigma)
+
+HPDI(sample.mu)
+HPDI(sample.sigma)
+
+# Small sample size
+d3 <- sample(d2$height, size = 20)
+mu.list <- seq(150, 170, length.out = 1000)
+sigma.list <- seq(4, 20, length.out = 1000)
+post2 <- expand.grid(mu = mu.list, sigma = sigma.list)
+post2$LL <- sapply(1:nrow(post2), function(i) 
+  sum(dnorm(d3, mean = post$mu[i], sd = post$sigma[i], log = TRUE)))
+post2$prod <- post2$LL + dnorm(post2$mu, 178, 20, TRUE) +
+  dunif(post2$sigma, 0, 50, TRUE)
+post2$prob <- exp(post2$prod - max(post2$prod))
+sample2.rows <- sample(1:nrow(post2), size = 1e4, replace = TRUE, prob = post2$prob)
+sample2.mu <- post2$mu[sample2.rows]
+sample2.sigma <- post2$sigma[sample2.rows]
+plot(sample2.mu, sample2.sigma, cex = 0.5, col = col.alpha(rangi2, 0.1))
+
+dens(sample2.sigma, norm.comp = TRUE)
+
+## 4.3 Gaussian model of height ####################################
+# Quadratic approximation
+d <- Howell1
+d2 <- d[d$age >= 18, ]
+
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu ~ dnorm(178, 20),
+  sigma ~ dunif(0, 50)
+)
+
+m4.1 <- map(flist, data = d2)
+precis(m4.1)
+
+start <- list(
+  mu = mean(d2$height),
+  sigma = sd(d2$height)
+)
+
+m4.1b <- map(flist, data = d2, start = start)
+precis(m4.1b)
+
+# Very narrow prior
+m4.2 <- map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu ~ dnorm(178, 0.1),
+    sigma ~ dunif(0, 50)
+  ),
+  data = d2
+)
+precis(m4.2)
+
+# Covariances
+vcov(m4.1)
+diag(vcov(m4.1))
+cov2cor(vcov(m4.1))
+
+# Extract samples from the posterior
+post <- extract.samples(m4.1, n = 1e4)
+head(post)
+precis(post)
+plot(post, cex = 0.5, col = col.alpha(rangi2, 0.1))
+
+# Quadratic approximation for sigma can be complicated
+m4.1_logsigma <- map(
+  alist(
+    height ~ dnorm(mu, exp(log_sigma)),
+    mu ~ dnorm(178, 20),
+    log_sigma ~ dnorm(2, 10)
+  ),
+  data = d2
+)
+precis(m4.1_logsigma)
+post <- extract.samples(m4.1_logsigma)
+# sigma is returned in log units
+sigma <- exp(post$log_sigma)
+dens(sigma)
+
+# Bivariate linear regression ######################################
+d <- Howell1
+d2 <- d[d$age >= 18, ]
+m4.3 <- map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- intercept + b_weight * weight,
+    intercept ~ dnorm(156, 100),
+    b_weight ~ dnorm(0, 10),
+    sigma ~ dunif(0, 50)
+  ),
+  data = d2
+)
+summary(m4.3)
+precis(m4.3, corr = TRUE)
+post <- extract.samples(m4.3)
+dens(post)
+
+plot(height ~ weight, d2)
+abline(a = coef(m4.3)["intercept"], b = coef(m4.3)["b_weight"])
+
+# Work with subsets of data
+
+N <- nrow(d2)
+dN <- d2[1:N, ]
+mN <- map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- intercept + b_weight * weight,
+    intercept ~ dnorm(178, 100),
+    b_weight ~ dnorm(0, 10),
+    sigma ~ dunif(0, 50)
+  ), data = dN
+)
+
+n_samp <- 20
+post <- extract.samples(mN, n = n_samp)
+
+ggplot(dN, aes(weight, height)) +
+  geom_point(alpha = 0.2) +
+  geom_abline(data = post, aes(intercept = intercept,
+                               slope = b_weight))
+
+# HDPI bands
+
+# posterior distribution for mu at each case in the data
+mu <- link(m4.3)
+
+# posterior distribution across an arbitrary interval
+weight_seq <- seq(25, 70, by = 1)
+mu <- link(m4.3, data = data.frame(weight = weight_seq))
+str(mu)
+
+mu_mean <- apply(mu, 2, mean)
+mu_HPDI <- apply(mu, 2, HPDI)
+
+# Prediction interval for the actual heights
+# sim incorporates sigma
+sim_heights <- sim(m4.3, data = list(weight = weight_seq),
+                   n = 1e4)
+height_PI <- apply(sim_heights, 2, PI, prob = 0.89)
+
+M_pred <- data.frame(weight = weight_seq,
+                     mu = mu_mean,
+                     lower_HPDI = mu_HPDI[1, ],
+                     upper_HPDI = mu_HPDI[2, ],
+                     lower_PI = height_PI[1, ],
+                     upper_PI = height_PI[2, ])
+
+ggplot() +
+  geom_point(data = dN, aes(x = weight, y = height),
+             color = "red") +
+  geom_ribbon(data = M_pred, aes(x = weight,
+                                 ymin = lower_HPDI,
+                                 ymax = upper_HPDI),
+              fill = "gray50", alpha = 0.5) +
+  geom_line(data = M_pred, aes(x = weight, y = mu),
+            color = "black") +
+  ggtitle("89% Highest Density Prediction Interval of mu")
+
+ggplot() +
+  geom_point(data = dN, aes(x = weight, y = height),
+             color = "red") +
+  geom_ribbon(data = M_pred, aes(x = weight,
+                                 ymin = lower_PI,
+                                 ymax = upper_PI),
+              fill = "gray50", alpha = 0.5) +
+  geom_line(data = M_pred, aes(x = weight, y = mu),
+            color = "black") +
+  ggtitle("89% Prediction Interval for Actual Values")
+
+# 4.5 polynomial
+d <- Howell1
+ggplot(d, aes(x = weight, y = height)) + geom_point()
+d$weight_s <- (d$weight - mean(d$weight)) / sd(d$weight)
+d$weight_s2 <- d$weight_s ^ 2
+m4.5 <- map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- intercept + b1 * weight_s + b2 * weight_s2,
+    intercept ~ dnorm(178, 10),
+    b1 ~ dnorm(0, 10),
+    b2 ~ dnorm(0, 10),
+    sigma ~ dunif(0, 50)
+  ), data = d
+)
+precis(m4.5)
+
+weight_seq <- seq(-2.2, 2, length.out = 30)
+pred_dat <- list(weight_s = weight_seq,
+                 weight_s2 = weight_seq ^ 2)
+mu <- link(m4.5, data = pred_dat)
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI, prob = 0.89)
+sim_height <- sim(m4.5, data = pred_dat)
+height_PI <- apply(sim_height, 2, PI, prob = 0.89)
+
+plot(height ~ weight_s, data = d, col = col.alpha(rangi2, 0.5))
+lines(weight_seq, mu_mean)
+shade(mu_PI, weight_seq)
+shade(height_PI, weight_seq)
+
+# 4.6 cubic
+d <- Howell1
+ggplot(d, aes(x = weight, y = height)) + geom_point()
+d$weight_s <- (d$weight - mean(d$weight)) / sd(d$weight)
+d$weight_s2 <- d$weight_s ^ 2
+d$weight_s3 <- d$weight_s ^ 3
+m4.6 <- map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- intercept + b1 * weight_s + b2 * weight_s2 + b3 * weight_s3,
+    intercept ~ dnorm(178, 10),
+    b1 ~ dnorm(0, 10),
+    b2 ~ dnorm(0, 10),
+    b3 ~ dnorm(0, 10),
+    sigma ~ dunif(0, 50)
+  ), data = d
+)
+precis(m4.6)
+
+weight_seq <- seq(-2.2, 2, length.out = 30)
+pred_dat <- list(weight_s = weight_seq,
+                 weight_s2 = weight_seq ^ 2,
+                 weight_s3 = weight_seq ^ 3)
+mu <- link(m4.6, data = pred_dat)
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI, prob = 0.89)
+sim_height <- sim(m4.6, data = pred_dat)
+height_PI <- apply(sim_height, 2, PI, prob = 0.89)
+
+plot(height ~ weight_s, data = d, col = col.alpha(rangi2, 0.5))
+lines(weight_seq, mu_mean)
+shade(mu_PI, weight_seq)
+shade(height_PI, weight_seq)
+```

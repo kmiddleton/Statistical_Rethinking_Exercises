@@ -1,0 +1,125 @@
+---
+title: "Chapter 7"
+author: "kmm"
+date: "February 24, 2016"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Continuous interactions
+
+```{r}
+data(tulips)
+d <- tulips
+d$bed <- NULL
+str(d)
+```
+
+```{r tulips_fit}
+m7.6 <- map2stan(
+  alist(
+    blooms ~ dnorm(mu, sigma),
+    mu <- a + bW * water + bS * shade,
+    c(a, bW, bS) ~ dnorm(0, 20),
+    sigma ~ dunif(0, 100)
+  ), data = d
+)
+m7.7 <- map2stan(
+  alist(
+    blooms ~ dnorm(mu, sigma),
+    mu <- a + bW * water + bS * shade + bWS * water * shade,
+    c(a, bW, bS, bWS) ~ dnorm(0, 20),
+    sigma ~ dunif(0, 100)
+  ), data = d
+)
+pairs(m7.6)
+pairs(m7.7)
+```
+
+```{r}
+coeftab(m7.6, m7.7)
+compare(m7.6, m7.7)
+```
+
+```{r tulips_fit_centered}
+d$shade_c <- d$shade - mean(d$shade)
+d$water_c <- d$water - mean(d$water)
+
+m7.8 <- map2stan(
+  alist(
+    blooms ~ dnorm(mu, sigma),
+    mu <- a + bW * water_c + bS * shade_c,
+    a ~ dnorm(50, 100),
+    c(bW, bS) ~ dnorm(0, 100),
+    sigma ~ dunif(0, 100)
+  ), data = d
+)
+m7.9 <- map2stan(
+  alist(
+    blooms ~ dnorm(mu, sigma),
+    mu <- a + bW * water_c + bS * shade_c + bWS * water_c * shade_c,
+    a ~ dnorm(50, 100),
+    c(bW, bS, bWS) ~ dnorm(0, 100),
+    sigma ~ dunif(0, 100)
+  ), data = d
+)
+plot(m7.8)
+plot(m7.9)
+pairs(m7.8)
+pairs(m7.9)
+```
+
+```{r}
+mean(d$blooms)
+coeftab(m7.8, m7.9)
+compare(m7.8, m7.9)
+precis(m7.9)
+```
+
+Plots
+
+```{r}
+# No interaction
+par(mfrow = c(1, 3))
+shade.seq <- -1:1
+for (w in -1:1) {
+  dt <- d[d$water_c == w, ]
+  plot(blooms ~ shade_c, data = dt, col = rangi2,
+       main = paste("water_c =", w), xaxp = c(-1, 1, 2),
+       ylim = c(0, 362), xlab = "shade(centered)")
+  mu <- link(m7.8, data = data.frame(water_c = w, shade_c = shade.seq))
+  mu.mean <- apply(mu, 2, mean)
+  mu.PI <- apply(mu, 2, PI, prob = 0.97)
+  lines(shade.seq, mu.mean)
+  lines(shade.seq, mu.PI[1, ], lty = 2)
+  lines(shade.seq, mu.PI[2, ], lty = 2)
+}
+```
+
+```{r}
+# Interaction
+par(mfrow = c(1, 3))
+shade.seq <- -1:1
+for (w in -1:1) {
+  dt <- d[d$water_c == w, ]
+  plot(blooms ~ shade_c, data = dt, col = rangi2,
+       main = paste("water_c =", w), xaxp = c(-1, 1, 2),
+       ylim = c(0, 362), xlab = "shade(centered)")
+  mu <- link(m7.9, data = data.frame(water_c = w, shade_c = shade.seq))
+  mu.mean <- apply(mu, 2, mean)
+  mu.PI <- apply(mu, 2, PI, prob = 0.97)
+  lines(shade.seq, mu.mean)
+  lines(shade.seq, mu.PI[1, ], lty = 2)
+  lines(shade.seq, mu.PI[2, ], lty = 2)
+}
+```
+
