@@ -38,3 +38,4 @@ vignettes/*.pdf
 
 # knitr HTML output
 *.html
+.Rproj.user

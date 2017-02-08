@@ -1,0 +1,121 @@
+---
+title: "Chapter 2"
+author: "kmm"
+date: "February 24, 2016"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE)
+library(rethinking)
+library(tidyverse)
+library(cowplot)
+
+set.seed(10)
+```
+
+## Plausibilities
+
+```{r}
+ways <- c(0, 3, 8, 9, 0)
+ways / sum(ways)
+```
+
+## Globe tossing
+
+```{r}
+# 1 == Water
+tosses <- c(1, 0, 1, 1, 1, 0, 1, 0, 1)
+
+PP <- data_frame(a = numeric(),
+                 b = numeric())
+PP[1, ] <- c(1, 1)
+for (i in 1:length(tosses)) {
+  toss <- tosses[i]
+  if (toss == 1) {
+    PP[i + 1, ] <- c(PP$a[i] + 1, PP$b[i])
+  } else {
+    PP[i + 1, ] <- c(PP$a[i], PP$b[i] + 1)
+  }
+}
+
+plots <- list()
+
+for (i in 2:nrow(PP)) {
+  prior <- data_frame(
+    prop_water = seq(0.001, 0.999, length = 100),
+    plausibility = dbeta(prop_water, shape1 = PP$a[i - 1], shape2 = PP$b[i - 1])
+  )
+  
+  posterior <- data_frame(
+    prop_water = seq(0.001, 0.999, length = 100),
+    plausibility = dbeta(prop_water, shape1 = PP$a[i], shape2 = PP$b[i])
+  )
+  
+  p <- ggplot() +
+    geom_line(data = prior, aes(prop_water, plausibility), linetype = "dashed") +
+    geom_line(data = posterior, aes(prop_water, plausibility)) +
+    theme(axis.text.y = element_blank(),
+          axis.ticks.y = element_blank()) +
+    labs(x = "Proportion Water", y = "Plausibility")
+  plots[[i - 1]] <- p
+}
+plot_grid(plotlist = plots, ncol = 3, nrow = 3)
+```
+
+## Grid approximation
+
+```{r}
+n <- 100
+p_grid <- seq(0, 1, length = n)
+prior <- rep(1, n)
+likelihood <- dbinom(6, 9, prob = p_grid)
+unstd_posterior <- likelihood * prior
+posterior <- unstd_posterior / sum(unstd_posterior)
+
+data_frame(p_grid, prior, likelihood, posterior) %>% 
+  gather(key, value, -p_grid) %>% 
+  ggplot(aes(p_grid, value, color = key)) +
+  geom_line()
+
+prior <- if_else(p_grid < 0.5, 0, 1)
+likelihood <- dbinom(6, 9, prob = p_grid)
+unstd_posterior <- likelihood * prior
+posterior <- unstd_posterior / sum(unstd_posterior)
+
+data_frame(p_grid, prior, likelihood, posterior) %>% 
+  gather(key, value, -p_grid) %>% 
+  ggplot(aes(p_grid, value, color = key)) +
+  geom_line()
+
+prior <- exp(-5 * abs(p_grid - 0.5))
+likelihood <- dbinom(6, 9, prob = p_grid)
+unstd_posterior <- likelihood * prior
+posterior <- unstd_posterior / sum(unstd_posterior)
+
+data_frame(p_grid, prior, likelihood, posterior) %>% 
+  gather(key, value, -p_grid) %>% 
+  ggplot(aes(p_grid, value, color = key)) +
+  geom_line()
+
+```
+
+## QA
+
+```{r}
+globe_qa <- rethinking::map(
+  alist(
+    w ~ dbinom(9, p),
+    p ~ dunif(0, 1)
+  ),
+  data = list(w = 6)
+)
+precis(globe_qa)
+```
+
