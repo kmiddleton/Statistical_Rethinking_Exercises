@@ -15,6 +15,7 @@ output:
 knitr::opts_chunk$set(cache = TRUE)
 library(rethinking)
 library(tidyverse)
+library(forcats)
 library(cowplot)
 
 set.seed(10)
@@ -80,9 +81,12 @@ unstd_posterior <- likelihood * prior
 posterior <- unstd_posterior / sum(unstd_posterior)
 
 data_frame(p_grid, prior, likelihood, posterior) %>% 
-  gather(key, value, -p_grid) %>% 
+  gather(key, value, -p_grid) %>%
+  mutate(key = factor(key),
+         key = fct_relevel(key, "prior", after = 1)) %>% 
   ggplot(aes(p_grid, value, color = key)) +
-  geom_line()
+  geom_line() +
+  facet_grid(key ~ ., scales = "free_y")
 
 prior <- if_else(p_grid < 0.5, 0, 1)
 likelihood <- dbinom(6, 9, prob = p_grid)
@@ -90,9 +94,12 @@ unstd_posterior <- likelihood * prior
 posterior <- unstd_posterior / sum(unstd_posterior)
 
 data_frame(p_grid, prior, likelihood, posterior) %>% 
-  gather(key, value, -p_grid) %>% 
+  gather(key, value, -p_grid) %>%
+  mutate(key = factor(key),
+         key = fct_relevel(key, "prior", after = 1)) %>% 
   ggplot(aes(p_grid, value, color = key)) +
-  geom_line()
+  geom_line() +
+  facet_grid(key ~ ., scales = "free_y")
 
 prior <- exp(-5 * abs(p_grid - 0.5))
 likelihood <- dbinom(6, 9, prob = p_grid)
@@ -100,10 +107,12 @@ unstd_posterior <- likelihood * prior
 posterior <- unstd_posterior / sum(unstd_posterior)
 
 data_frame(p_grid, prior, likelihood, posterior) %>% 
-  gather(key, value, -p_grid) %>% 
+  gather(key, value, -p_grid) %>%
+  mutate(key = factor(key),
+         key = fct_relevel(key, "prior", after = 1)) %>% 
   ggplot(aes(p_grid, value, color = key)) +
-  geom_line()
-
+  geom_line() +
+  facet_grid(key ~ ., scales = "free_y")
 ```
 
 ## QA
