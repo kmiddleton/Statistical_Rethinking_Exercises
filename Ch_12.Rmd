@@ -1,0 +1,99 @@
+---
+title: "Chapter 12"
+author: "kmm"
+date: 'Last updated: `r Sys.Date()`'
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+library(ellipse)
+library(tidyverse)
+library(cowplot)
+```
+
+## Load `reedfrogs`
+
+```{r}
+data(reedfrogs)
+d <- reedfrogs
+```
+
+## m12.1
+
+```{r}
+# Make the tank cluster variable
+d <- d %>% 
+  mutate(tank = 1:nrow(d))
+
+m12.1 <- map2stan(
+  alist(
+    surv ~ dbinom(density, p),
+    logit(p) <- a_tank[tank],
+    a_tank[tank] ~ dnorm(0, 5)
+  ),
+  data = d)
+```
+
+## m12.2
+
+```{r}
+m12.2 <- map2stan(
+  alist(
+    surv ~ dbinom(density, p),
+    logit(p) <- a_tank[tank],
+    a_tank[tank] ~ dnorm(a, sigma),
+    a ~ dnorm(0, 1),
+    sigma ~ dcauchy(0, 1)
+  ),
+  data = d,
+  iter = 4000,
+  chains = 4)
+
+precis(m12.2, depth = 2)
+plot(m12.2)
+```
+
+## Compare m12.1 and m12.2
+
+```{r}
+rethinking::compare(m12.1, m12.2)
+```
+
+## Compare posterior medians
+
+```{r}
+post <- extract.samples(m12.2)
+
+# Median intercept for each tank
+d <- d %>% 
+  mutate(propsurv_est = logistic(apply(post$a_tank, 2, median)))
+
+d %>% 
+  ggplot() +
+  geom_point(aes(x = tank, y = propsurv), color = "blue", size = 2) +
+  geom_point(aes(x = tank, y = propsurv_est), color = "black", pch = 1, size = 2) +
+  geom_vline(xintercept = c(16.2, 32.4)) +
+  geom_hline(yintercept = logistic(median(post$a)), lty = "dashed") +
+  scale_x_continuous(breaks = c(1, 16, 32, 48)) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.2)) +
+  labs(x = "Tank", y = "Propotion Survival") +
+  annotate("text", x = 8, y = 0.05, label = "Small Tanks") +
+  annotate("text", x = 24, y = 0.05, label = "Medium Tanks") +
+  annotate("text", x = 42, y = 0.05, label = "Large Tanks")
+```
+
+## Inferred population distribution
+
+```{r}
+# 12.6
+
+```
+
