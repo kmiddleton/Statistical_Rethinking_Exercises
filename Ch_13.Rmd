@@ -15,9 +15,8 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 library(rethinking)
 library(ellipse)
-library(ggplot2)
+library(tidyverse)
 library(cowplot)
-library(dplyr)
 ```
 
 ## Simulate cafes
@@ -231,10 +230,10 @@ dens(post$Rho[, 1, 2])
 
 ```{r eval=FALSE}
 data("chimpanzees")
-d <- chimpanzees
-d$recipient <- NULL
-d$block_id <- d$block
-d$block <- NULL
+d <- chimpanzees %>% 
+  select(-recipient) %>% 
+  rename(block_id = block) %>% 
+  as.data.frame()
 
 m13.6 <- map2stan(
   alist(
