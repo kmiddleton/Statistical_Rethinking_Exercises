@@ -128,3 +128,31 @@ globe_qa <- rethinking::map(
 precis(globe_qa)
 ```
 
+```{r}
+w <- c(6, 12, 24)
+n <- c(9, 18, 36)
+
+beta <- function(x, w, n) dbeta(x, w + 1, n - w + 1)
+norm <- function(x, w, n){
+  dt <- list(w = w, n = n)
+  flist <- alist(
+    w ~ dbinom(n, p),
+    p ~ dunif(0, 1))
+  
+  res <- rethinking::map(flist, dt)
+  res <- precis(res)@output
+  
+  dnorm(x, res$Mean, res$StdDev)
+}
+
+dt <- data.frame(x = seq(from = 0, to = 1, by = .01))
+
+qa_graph <- function(dt, w, n){
+  ggplot(dt, aes(x = x)) + stat_function(fun = beta, geom = "line", args = list(w = w, n = n), color = "blue") + stat_function(fun = norm, geom = "line", args = list(w = w, n = n)) + ylab("Density") + xlab("proportion water") + ggtitle(paste0("n = ", n))
+}
+
+qa_graph(dt, w[1], n[1])
+qa_graph(dt, w[2], n[2])
+qa_graph(dt, w[3], n[3])
+
+```
