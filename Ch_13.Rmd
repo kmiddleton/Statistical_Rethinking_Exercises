@@ -252,11 +252,9 @@ m13.6 <- map2stan(
     Rho_actor ~ dlkjcorr(2),
     Rho_block ~ dlkjcorr(2)
   ),
-  data = d, iter = 5000, warmup = 1000, chains = 3
+  data = d, iter = 10000, warmup = 1000, chains = 4, cores = 4
 )
-```
 
-```{r eval=FALSE}
 m13.6NC <- map2stan(
   alist(
     pulled_left ~ dbinom(1, p),
@@ -274,9 +272,8 @@ m13.6NC <- map2stan(
     Rho_actor ~ dlkjcorr(2),
     Rho_block ~ dlkjcorr(2)
   ),
-  data = d, iter = 5000, warmup = 1000, chains = 3
+  data = d, iter = 10000, warmup = 1000, chains = 4, cores = 4
 )
-precis(m13.6NC)
 ```
 
 ```{r eval=FALSE}
@@ -291,9 +288,7 @@ rethinking::compare(m13.6, m13.6NC)
 data("islandsDistMatrix")
 Dmat <- islandsDistMatrix
 Dmat <- round(Dmat, 1)
-```
 
-```{r}
 data("Kline2")
 d <- Kline2
 d$society <- 1:10
