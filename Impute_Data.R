@@ -25,12 +25,47 @@ mammals_s <- mammals %>% mutate(log_Mass = log10(Mass),
 fm <- lm(log_Forearm ~ log_Mass, data = mammals_s)
 summary(fm)
 
+m_noNA <- mammals_s %>% 
+  drop_na() %>% 
+  as.data.frame()
+
 data_list <- list(
   log_Mass = mammals_s$log_Mass,
   log_Forearm = mammals_s$log_Forearm
 )
 
 ##
+fm0 <- map2stan(
+  alist(
+    log_Forearm ~ dnorm(mu, sigma),
+    mu <- a + bMass * log_Mass,
+    a ~ dnorm(0, 10),
+    bMass ~ dnorm(0, 5),
+    sigma ~ dcauchy(0, 1)
+  ) ,
+  data = m_noNA,
+  iter = 1e4,
+  chains = 2
+)
+
+plot(fm0)
+
+traceplot(fm0@stanfit) + 
+  xlim(c(5000, 5005))
+
+post <- extract.samples(fm0) %>% as.data.frame()
+
+precis(fm0)
+
+post <- extract.samples(fm0)
+
+pp_data <- sim(fm0)
+
+data_list <- list(
+  log_Mass = mammals_s$log_Mass,
+  log_Forearm = mammals_s$log_Forearm
+)
+
 fm1 <- map2stan(
   alist(
     log_Forearm ~ dnorm(mu, sigma),

@@ -14,7 +14,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE)
 library(rethinking)
-library(ggplot2)
+library(tidyverse)
 library(cowplot)
 
 set.seed(10)
@@ -27,6 +27,8 @@ prod(1 + runif(12, 0, 0.1))
 
 growth <- replicate(10000, prod(1 + runif(12, 0, 0.1)))
 dens(growth, norm.comp = TRUE)
+
+data_frame(growth)
 
 big <- replicate(10000, prod(1 + runif(12, 0, 0.5)))
 small <- replicate(10000, prod(1 + runif(12, 0, 0.01)))
@@ -161,6 +163,7 @@ sigma <- exp(post$log_sigma)
 dens(sigma)
 
 # Bivariate linear regression ######################################
+data(Howell1)
 d <- Howell1
 d2 <- d[d$age >= 18, ]
 m4.3 <- map(
