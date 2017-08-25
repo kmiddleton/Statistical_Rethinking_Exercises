@@ -18,9 +18,6 @@ library(dplyr)
 library(reshape2)
 library(ggplot2)
 library(cowplot)
-
-source("~/Dropbox/Classes/Topics_Biostats/theme_cowplot.R")
-ggplot2::theme_set(theme_cowplot())
 ```
 
 ## Hominin brains
@@ -205,7 +202,7 @@ pred.m6.14 <- link(m6.14, data = d.predict)
 mu <- apply(pred.m6.14, 2, mean)
 mu.PI <- apply(pred.m6.14, 2, PI)
 
-M_pred <- data.frame(neocortex = nc.seq,
+M_pred <- data_frame(neocortex_p = nc.seq,
                      mu = mu,
                      lower_PI = mu.PI[1, ],
                      upper_PI = mu.PI[2, ])
@@ -231,6 +228,7 @@ ggplot() +
                                 ymin = lower_PI,
                                 ymax = upper_PI),
               fill = "gray50", alpha = 0.5) +
+  geom_line(data = M_ens, aes(x = neocortex, y = mu)) +
   geom_point(data = d, aes(neocortex, kcal.per.g)) +
   geom_line(data = M_pred, aes(x = neocortex,
                                y = lower_PI),
