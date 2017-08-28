@@ -1,0 +1,118 @@
+---
+title: "Chapter 11"
+author: "kmm"
+date: 'Last updated: `r Sys.Date()`'
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rethinking)
+library(tidyverse)
+library(cowplot)
+```
+
+## Load data
+
+```{r}
+data(Trolley)
+d <- Trolley
+```
+
+```{r}
+simplehist(d$response, xlim=c(1, 7), xlab="response")
+```
+
+```{r}
+m11.1 <- 
+  rethinking::map(
+    alist(
+      response ~ dordlogit(phi, c(a1, a2, a3, a4, a5, a6)),
+      phi <- 0,
+      c(a1, a2, a3, a4, a5, a6) ~ dnorm(0, 10)
+    ),
+    data = d,
+    start = list(a1 = -2, a2 = -1, a3 = 0, a4 = 1, a5 = 2, a6 = 2.5)
+  )
+```
+
+```{r}
+m11.1stan <- map2stan(
+    alist(
+        response ~ dordlogit(phi, cutpoints),
+        phi <- 0,
+        cutpoints ~ dnorm(0, 10)
+    ),
+    data = list(response = d$response),
+    start = list(cutpoints = c(-2, -1, 0, 1, 2, 2.5)),
+    chains = 1, cores = 1)
+```
+
+## Zero-inflated Poisson
+
+```{r}
+set.seed(84672)
+
+## R code 11.20
+# define parameters
+prob_drink <- 0.2 # 20% of days
+rate_work <- 1    # average 1 manuscript per day
+
+# sample one year of production
+N <- 365
+
+# simulate days monks drink
+drink <- rbinom( N , 1 , prob_drink )
+
+# simulate manuscripts completed
+y <- (1 - drink) * rpois( N , rate_work )
+
+## R code 11.21
+simplehist(y, xlab = "manuscripts completed", lwd = 4)
+zeros_drink <- sum(drink)
+zeros_work <- sum(y == 0 & drink == 0)
+zeros_total <- sum(y == 0)
+lines(c(0, 0), c(zeros_work, zeros_total) , lwd = 4, col = rangi2)
+
+m11.4 <- rethinking::map(
+    alist(
+        y ~ dzipois(p, lambda),
+        logit(p) <- ap,
+        log(lambda) <- al,
+        ap ~ dnorm(0, 1),
+        al ~ dnorm(0, 10)
+    ) ,
+    data = list(y = y) )
+precis(m11.4)
+
+post <- extract.samples(m11.4)
+
+logistic(median(post$ap))  # probability drink
+exp(median(post$al))       # rate finish manuscripts, when not drinking
+
+###
+
+m11.4_stan <- map2stan(
+    alist(
+        y ~ dzipois(p, lambda),
+        logit(p) <- ap,
+        log(lambda) <- al,
+        ap ~ dnorm(0, 1),
+        al ~ dnorm(0, 10)
+    ) ,
+    data = list(y = y) )
+precis(m11.4_stan)
+
+post <- extract.samples(m11.4_stan)
+
+logistic(median(post$ap))  # probability drink
+exp(median(post$al))       # rate finish manuscripts, when not drinking
+
+```
+

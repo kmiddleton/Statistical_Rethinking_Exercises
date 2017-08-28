@@ -90,6 +90,51 @@ d %>%
   annotate("text", x = 42, y = 0.05, label = "Large Tanks")
 ```
 
+## Simulating pools
+
+```{r}
+set.seed(238746)
+
+a <- 1.4
+sigma <- 1.5
+nponds <- 60
+ni <- as.integer(rep(c(5, 10, 25, 35), each = 15))
+a_pond <- rnorm(nponds, mean = a, sd = sigma)
+dsim <- data.frame(
+  pond = 1:nponds,
+  ni = ni,
+  true_a = a_pond
+)
+dsim$si <- rbinom(nponds,
+                  prob = logistic(dsim$true_a),
+                  size = dsim$ni)
+dsim$p_nopool <- dsim$si / dsim$ni
+```
+
+```{r}
+m12.3 <- map2stan(
+  alist(
+    si ~ dbinom(ni, p),
+    logit(p) <- a_pond[pond],
+    a_pond[pond] ~ dnorm(a, sigma),
+    a ~ dnorm(0, 1),
+    sigma ~ dcauchy(0, 1)
+  ),
+  data = dsim,
+  iter = 1e4,
+  warmup = 1000
+)
+
+precis(m12.3, depth = 2)
+```
+
+```{r}
+estimated.a_pond <- as.numeric(coef(m12.3)[1:60])
+dsim$p_partpool <- logistic(estimated.a_pond)
+dsim$p_tru <- logistic(dsim$true_a)
+```
+
+
 ## Inferred population distribution
 
 ```{r}

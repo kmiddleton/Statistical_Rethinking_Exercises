@@ -92,3 +92,33 @@ library(rethinking)
 
 ```
 
+## Solving a binomial
+
+```{r}
+library(rethinking)
+set.seed(321876)
+s <- 200
+y <- rbinom(n = 1, size = s, prob = 0.45)
+y01 <- c(rep(1, y), rep(0, s - y))
+sum(y)
+
+fm_binom <- rethinking::map(
+  alist(
+    y ~ dbinom(s, p),
+    p ~ dbeta(1, 1)
+  ),
+  data = list(y = y, s = s)
+)
+precis(fm_binom)
+
+fm_poisson <- rethinking::map(
+  alist(
+    y01 ~ dpois(lambda),
+    log(lambda) ~ a,
+    a ~ dnorm(0, 100)
+  ),
+  data = list(y01 = y01)
+)
+precis(fm_poisson)
+```
+
