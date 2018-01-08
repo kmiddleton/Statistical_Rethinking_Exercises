@@ -1,0 +1,90 @@
+---
+title: "Chapter 10"
+author: "kmm"
+date: "January 08, 2018"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rethinking)
+```
+
+## Chimpanzees
+
+```{r}
+data("chimpanzees")
+d <- chimpanzees
+```
+
+```{r}
+m10.1 <- rethinking::map(
+  alist(
+    pulled_left ~ dbinom(1, p),
+    logit(p) <- a,
+    a ~ dnorm(0, 10)
+  ),
+  data = d
+)
+precis(m10.1)
+
+logistic(0.32)
+mean(d$pulled_left)
+
+logistic(c(0.18, 0.46))
+```
+
+```{r}
+m10.2 <- rethinking::map(
+  alist(
+    pulled_left ~ dbinom(1, p),
+    logit(p) <- a + bp * prosoc_left,
+    a ~ dnorm(0, 10),
+    bp ~ dnorm(0, 10)
+  ),
+  data = d
+)
+
+precis(m10.2)
+
+```
+
+Simulate data from the model to try and recover the observed rates.
+
+```{r}
+d %>% group_by(factor(prosoc_left)) %>% 
+  summarize(mean_pulled_left = mean(pulled_left))
+
+d.pred <- data.frame(
+  prosoc_left = c(0, 1)
+)
+sim.prosoc <- sim(m10.2, data = d.pred)
+colMeans(sim.prosoc)
+```
+
+```{r}
+m10.3 <- rethinking::map(
+  alist(
+    pulled_left ~ dbinom(1, p),
+    logit(p) <- a + (bp + bpC * condition) * prosoc_left,
+    a ~ dnorm(0, 10),
+    bp ~ dnorm(0, 10),
+    bpC ~ dnorm(0, 10)
+  ),
+  data = d
+)
+
+precis(m10.3)
+
+rethinking::compare(m10.1, m10.2, m10.3)
+
+plot(rethinking::compare(m10.1, m10.2, m10.3))
+```
+
