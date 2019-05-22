@@ -2,13 +2,7 @@
 title: "Chapter 3"
 author: "kmm"
 date: "February 24, 2016"
-output:
-  html_document:
-    theme: flatly
-    toc: true
-    toc_float:
-      collapsed: false
-      smooth_scroll: true
+output: html_document
 ---
 
 ```{r setup, include=FALSE}

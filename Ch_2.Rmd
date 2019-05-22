@@ -2,20 +2,13 @@
 title: "Chapter 2"
 author: "kmm"
 date: "February 24, 2016"
-output:
-  html_document:
-    theme: flatly
-    toc: true
-    toc_float:
-      collapsed: false
-      smooth_scroll: true
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE)
 library(rethinking)
 library(tidyverse)
-library(forcats)
 library(cowplot)
 
 set.seed(10)
