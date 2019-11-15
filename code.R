@@ -681,6 +681,19 @@ m5.3 <- map(
         sigma ~ dunif( 0 , 10 )
     ) ,
     data = d )
+coef(lm(Divorce ~ Marriage.s + MedianAgeMarriage.s, data = d))
+confint(lm(Divorce ~ Marriage.s + MedianAgeMarriage.s, data = d))
+precis( m5.3, prob =0.95 )
+
+m5.3b <- map(
+    alist(
+        Divorce ~ dnorm( mu , sigma ) ,
+        mu <- a + bA*MedianAgeMarriage.s ,
+        a ~ dnorm( 10 , 10 ) ,
+        bA ~ dnorm( 0 , 1 ) ,
+        sigma ~ dunif( 0 , 10 )
+    ) ,
+    data = d )
 precis( m5.3 )
 
 ## R code 5.5

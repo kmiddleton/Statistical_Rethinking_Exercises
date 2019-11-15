@@ -17,6 +17,7 @@ library(rethinking)
 library(ellipse)
 library(tidyverse)
 library(cowplot)
+theme_set(theme_cowplot())
 ```
 
 ## Load `reedfrogs`
@@ -39,7 +40,9 @@ m12.1 <- map2stan(
     logit(p) <- a_tank[tank],
     a_tank[tank] ~ dnorm(0, 5)
   ),
-  data = d)
+  data = d,
+  iter = 1e4,
+  chains = 4)
 ```
 
 ## m12.2
@@ -50,21 +53,28 @@ m12.2 <- map2stan(
     surv ~ dbinom(density, p),
     logit(p) <- a_tank[tank],
     a_tank[tank] ~ dnorm(a, sigma),
-    a ~ dnorm(0, 1),
-    sigma ~ dcauchy(0, 1)
+    a ~ dnorm(0, 2),
+    sigma ~ dexp(1)
   ),
   data = d,
-  iter = 4000,
+  iter = 1e4,
   chains = 4)
-
-precis(m12.2, depth = 2)
-plot(m12.2)
 ```
 
 ## Compare m12.1 and m12.2
 
 ```{r}
+precis(m12.1, depth = 2)
+precis(m12.2, depth = 2)
 rethinking::compare(m12.1, m12.2)
+```
+
+## Compare m12.1 to Proportion
+
+```{r}
+median_surv <- extract.samples(m12.1)$a_tank %>% apply(., 2, median) %>% logistic()
+data.frame(propsurv = d$propsurv,
+           median_surv)
 ```
 
 ## Compare posterior medians
@@ -74,11 +84,13 @@ post <- extract.samples(m12.2)
 
 # Median intercept for each tank
 d <- d %>% 
-  mutate(propsurv_est = logistic(apply(post$a_tank, 2, median)))
+  mutate(propsurv_est = logistic(apply(post$a_tank, 2, median)),
+         median_surv = median_surv)
 
 d %>% 
   ggplot() +
   geom_point(aes(x = tank, y = propsurv), color = "blue", size = 2) +
+  geom_point(aes(x = tank, y = median_surv), color = "red", size = 2, alpha = 0.5) +
   geom_point(aes(x = tank, y = propsurv_est), color = "black", pch = 1, size = 2) +
   geom_vline(xintercept = c(16.2, 32.4)) +
   geom_hline(yintercept = logistic(median(post$a)), lty = "dashed") +
@@ -88,6 +100,22 @@ d %>%
   annotate("text", x = 8, y = 0.05, label = "Small Tanks") +
   annotate("text", x = 24, y = 0.05, label = "Medium Tanks") +
   annotate("text", x = 42, y = 0.05, label = "Large Tanks")
+```
+
+```{r}
+m12.1sd <- precis(m12.1, depth = 2) %>% data.frame()
+m12.1sd$model <- "12.1"
+
+m12.2sd <- precis(m12.2, depth = 2, pars = paste0("a_tank[", 1:48, "]")) %>%
+  data.frame()
+m12.2sd$model <- "12.2"
+
+mods <- bind_rows(m12.1sd, m12.2sd)
+
+mods %>% 
+  group_by(model) %>% 
+  summarize(mean_sd = mean(sd),
+            sd_sd = sd(sd))
 ```
 
 ## Simulating pools
