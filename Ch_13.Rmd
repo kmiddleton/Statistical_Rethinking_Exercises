@@ -17,9 +17,13 @@ library(rethinking)
 library(ellipse)
 library(tidyverse)
 library(cowplot)
+theme_set(theme_cowplot())
 ```
 
 ## Simulate cafes
+
+$$Cov(A,B) = \sigma_A \cdot \sigma_B \cdot Cor(A, B)$$
+
 
 ```{r}
 a <- 3.5
@@ -28,8 +32,14 @@ sigma_a <- 1
 sigma_b <- 0.5
 rho <- -0.7
 
+(cov_ab <- sigma_a * sigma_b * rho)
+(Sigma <- matrix( c(sigma_a^2,cov_ab,cov_ab,sigma_b^2) , ncol=2 ))
+
 Mu <- c(a, b)
+
 (sigmas <- c(sigma_a, sigma_b))
+diag(sigmas)
+
 (Rho <- matrix(c(1, rho, rho, 1), 2))
 (Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas))
 
@@ -128,7 +138,8 @@ rho_est <- mean(post$Rho[, 1, 2])
 sa_est <- mean(post$sigma_cafe[, 1])
 sb_est <- mean(post$sigma_cafe[, 2])
 cov_ab <- sa_est * sb_est * rho_est
-Sigma_est <- matrix(c(sa_est ^ 2, cov_ab, cov_ab, sb_est ^ 2), ncol = 2)
+Sigma_est <- matrix(c(sa_est ^ 2, cov_ab, cov_ab, sb_est ^ 2),
+                    ncol = 2)
 for (l in c(0.1, 0.3, 0.5, 0.8, 0.99)) {
   lines(ellipse(Sigma_est, centre = Mu_est, level = l),
         col = col.alpha("black", 0.2))
@@ -155,13 +166,81 @@ rho_est <- cor(wait_morning_2, wait_afternoon_2)
 sa_est <- sd(wait_morning_2)
 sb_est <- sd(wait_afternoon_2)
 cov_ab <- sa_est * sb_est * rho_est
-Sigma_est <- matrix(c(sa_est ^ 2, cov_ab, cov_ab, sb_est ^ 2), ncol = 2)
+Sigma_est <- matrix(c(sa_est ^ 2, cov_ab, cov_ab, sb_est ^ 2),
+                    ncol = 2)
 for (l in c(0.1, 0.3, 0.5, 0.8, 0.99)) {
   lines(ellipse(Sigma_est, centre = Mu_est, level = l),
         col = col.alpha("black", 0.2))
 }
-
 ```
+
+### Lower correlation
+
+```{r}
+a <- 3.5
+b <- -1
+sigma_a <- 1
+sigma_b <- 0.5
+rho <- -0.05
+
+Mu <- c(a, b)
+sigmas <- c(sigma_a, sigma_b)
+
+Rho <- matrix(c(1, rho, rho, 1), 2)
+Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas)
+
+set.seed(5)
+vary_effects <- MASS::mvrnorm(N_cafes, Mu, Sigma)
+
+a_cafe <- vary_effects[, 1]
+b_cafe <- vary_effects[, 2]
+
+N_visits <- 20
+afternoon <- rep(0:1, N_visits * N_cafes / 2)
+cafe_id <- rep(1:N_cafes, each = N_visits)
+mu <- a_cafe[cafe_id] + b_cafe[cafe_id] * afternoon
+sigma <- 0.5
+wait <- rnorm(N_visits * N_cafes, mu, sigma)
+d <- data.frame(cafe = cafe_id, afternoon = afternoon, wait = wait)
+
+plot(a_cafe, b_cafe, col = rangi2,
+     xlab = "intercepts (a_cafe)", ylab = "slopes (b_cafe)")
+for (l in c(0.1, 0.3, 0.5, 0.8, 0.99)) {
+  lines(ellipse(Sigma, centre = Mu, level = l),
+        col = col.alpha("black", 0.2))
+}
+
+m13.0b <- map2stan(
+  alist(
+    wait ~ dnorm(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe] * afternoon,
+    a_cafe[cafe] ~ dnorm(0, sigma_cafe),
+    b_cafe[cafe] ~ dnorm(0, 10),
+    sigma_cafe ~ dcauchy(0, 2),
+    sigma ~ dcauchy(0, 2)
+  ),
+  data = d,
+  iter = 5000, warmup = 2000
+)
+
+m13.1b <- map2stan(
+  alist(
+    wait ~ dnorm(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe] * afternoon,
+    c(a_cafe, b_cafe)[cafe] ~ dmvnorm2(c(a, b), sigma_cafe, Rho),
+    a ~ dnorm(0, 10),
+    b ~ dnorm(0, 10),
+    sigma_cafe ~ dcauchy(0, 2),
+    sigma ~ dcauchy(0, 2),
+    Rho ~ dlkjcorr(4)
+  ),
+  data = d,
+  iter = 5000, warmup = 2000
+)
+
+rethinking::compare(m13.0, m13.1)
+```
+
 
 ## UBC Admits
 
