@@ -29,9 +29,9 @@ sigma_b <- 0.5
 rho <- -0.7
 
 Mu <- c(a, b)
-sigmas <- c(sigma_a, sigma_b)
-Rho <- matrix(c(1, rho, rho, 1), 2)
-Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas)
+(sigmas <- c(sigma_a, sigma_b))
+(Rho <- matrix(c(1, rho, rho, 1), 2))
+(Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas))
 
 N_cafes <- 20
 
