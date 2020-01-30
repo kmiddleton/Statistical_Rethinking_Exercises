@@ -60,6 +60,21 @@ d <- data.frame(cafe = cafe_id, afternoon = afternoon, wait = wait)
 ```
 
 ```{r}
+m13.0 <- map2stan(
+  alist(
+    wait ~ dnorm(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe] * afternoon,
+    a_cafe[cafe] ~ dnorm(0, sigma_cafe),
+    b_cafe[cafe] ~ dnorm(0, 10),
+    sigma_cafe ~ dcauchy(0, 2),
+    sigma ~ dcauchy(0, 2)
+  ),
+  data = d,
+  iter = 5000, warmup = 2000
+)
+```
+
+```{r}
 m13.1 <- map2stan(
   alist(
     wait ~ dnorm(mu, sigma),
@@ -74,6 +89,10 @@ m13.1 <- map2stan(
   data = d,
   iter = 5000, warmup = 2000
 )
+```
+
+```{r}
+rethinking::compare(m13.0, m13.1)
 ```
 
 ```{r}
