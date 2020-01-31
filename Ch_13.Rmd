@@ -24,7 +24,6 @@ theme_set(theme_cowplot())
 
 $$Cov(A,B) = \sigma_A \cdot \sigma_B \cdot Cor(A, B)$$
 
-
 ```{r}
 a <- 3.5
 b <- -1
@@ -181,7 +180,7 @@ a <- 3.5
 b <- -1
 sigma_a <- 1
 sigma_b <- 0.5
-rho <- -0.05
+rho <- -0.01
 
 Mu <- c(a, b)
 sigmas <- c(sigma_a, sigma_b)
@@ -189,7 +188,7 @@ sigmas <- c(sigma_a, sigma_b)
 Rho <- matrix(c(1, rho, rho, 1), 2)
 Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas)
 
-set.seed(5)
+set.seed(2368)
 vary_effects <- MASS::mvrnorm(N_cafes, Mu, Sigma)
 
 a_cafe <- vary_effects[, 1]
@@ -238,7 +237,47 @@ m13.1b <- map2stan(
   iter = 5000, warmup = 2000
 )
 
-rethinking::compare(m13.0, m13.1)
+rethinking::compare(m13.0b, m13.1b)
+```
+
+
+
+```{r}
+post <- extract.samples(m13.1b)
+dens(rlkjcorr(1e5, K = 2, eta = 4)[ , 1, 2], col = "blue",
+     ylim = c(0, 2.5))
+dens(post$Rho[ , 1, 2], add = TRUE)
+
+a1 <- sapply(1:N_cafes,
+             function(i) mean(wait[cafe_id == i & afternoon == 0]))
+b1 <- sapply(1:N_cafes,
+             function(i) mean(wait[cafe_id == i & afternoon == 1])) - a1
+
+# extract posterior means of partially pooled estimates
+a2 <- apply(post$a_cafe, 2, mean)
+b2 <- apply(post$b_cafe, 2, mean)
+
+# Plot both and connect the lines
+plot(a1, b1, xlab = "intercept", ylab = "slope",
+     pch = 16, col = rangi2,
+     ylim = c(min(b1) - 0.1, max(b1) + 0.1),
+     xlim = c(min(a1) - 0.1, max(a1) + 0.1))
+points(a2, b2, pch = 1)
+for (i in 1:N_cafes) lines(c(a1[i], a2[i]), c(b1[i], b2[i]))
+
+# Compute posterior mean bivariate Gaussian
+Mu_est <- c(mean(post$a), mean(post$b))
+rho_est <- mean(post$Rho[, 1, 2])
+sa_est <- mean(post$sigma_cafe[, 1])
+sb_est <- mean(post$sigma_cafe[, 2])
+cov_ab <- sa_est * sb_est * rho_est
+Sigma_est <- matrix(c(sa_est ^ 2, cov_ab, cov_ab, sb_est ^ 2),
+                    ncol = 2)
+for (l in c(0.1, 0.3, 0.5, 0.8, 0.99)) {
+  lines(ellipse(Sigma_est, centre = Mu_est, level = l),
+        col = col.alpha("black", 0.2))
+}
+points(Mu_est[1], Mu_est[2], pch = 16, col = "red")
 ```
 
 
