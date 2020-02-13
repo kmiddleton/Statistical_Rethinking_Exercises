@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library("rethinking")
 library("tidyverse")
 library("cowplot")
+theme_set(theme_cowplot())
 ```
 
 ```{r}
